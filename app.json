@@ -24,6 +24,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a54548a1-648a-48f0-af92-f2da06197c16"
+      }
+    },
+    "owner": "khurram-devs"
   }
 }
