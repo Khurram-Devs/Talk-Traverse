@@ -4,6 +4,7 @@ import * as Speech from "expo-speech";
 import { useState, useEffect } from "react";
 import { useTheme } from "../theme/ThemeContext";
 import lingvaTranslate from "../services/translateText";
+import playLingvaAudio from "../services/playLingvaAudio";
 
 const SUPPORTED_LANGUAGES = {
   en: "English",
@@ -44,7 +45,7 @@ const TextToSpeechScreen = () => {
     try {
       const translated = await lingvaTranslate(text, "en", targetLang);
       setTranslatedText(translated);
-      Speech.speak(translated, { language: targetLang });
+      await playLingvaAudio(targetLang, translated);
     } catch (error) {
       console.error("Translation failed:", error);
       Alert.alert("Translation failed", error.message);
