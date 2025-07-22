@@ -19,9 +19,9 @@ const TextToSpeechScreen = () => {
   useEffect(() => {
     (async () => {
       const voices = await Speech.getAvailableVoicesAsync();
-      console.log("Available voices:", voices);
     })();
   }, []);
+
   const { theme } = useTheme();
   const [text, setText] = useState("");
   const [targetLang, setTargetLang] = useState("es");
@@ -94,6 +94,22 @@ const TextToSpeechScreen = () => {
           color={theme.primary}
         />
       </View>
+
+      {translatedText ? (
+        <View style={styles.translationPreview}>
+          <Text style={[styles.label, { color: theme.text }]}>Translated Text:</Text>
+          <TextInput
+            style={[
+              styles.input,
+              styles.previewBox,
+              { color: theme.text, borderColor: theme.text },
+            ]}
+            value={translatedText}
+            editable={false}
+            multiline
+          />
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -128,5 +144,11 @@ const styles = StyleSheet.create({
     marginTop: 20,
     flexDirection: "column",
     gap: 10,
+  },
+  translationPreview: {
+    marginTop: 20,
+  },
+  previewBox: {
+    backgroundColor: "#f0f0f0",
   },
 });
