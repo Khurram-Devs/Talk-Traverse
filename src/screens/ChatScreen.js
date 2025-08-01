@@ -5,36 +5,30 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   StyleSheet,
   StatusBar,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import AppLayout from "../layout/AppLayout";
+import TranslationModal from "../components/TranslationModal";
+import { speakText, translateText } from "../services";
 
-// Header Component
-const ChatHeader = ({ onBackPress, receiverName }) => {
+const ReceiverProfile = ({ receiverName }) => {
   return (
-    <View style={styles.header}>
-      <TouchableOpacity onPress={onBackPress} style={styles.backButton}>
-        <Text style={styles.backButtonText}>←</Text>
-      </TouchableOpacity>
-
-      <View style={styles.profileSection}>
-        <View style={styles.profileImage}>
-          <View style={styles.profileImageInner} />
-        </View>
-        <Text style={styles.receiverName}>{receiverName}</Text>
+    <View style={styles.profileSection}>
+      <View style={styles.profileImage}>
+        <View style={styles.profileImageInner} />
       </View>
-
-      <TouchableOpacity style={styles.menuButton}>
-        <Text style={styles.menuButtonText}>≡</Text>
-      </TouchableOpacity>
+      <Text style={styles.receiverName}>{receiverName}</Text>
     </View>
   );
 };
 
-// Action Button Component (Translate/Listen)
-const ActionButton = ({ title, onPress, type = "secondary" }) => {
+const ActionButton = ({
+  title,
+  onPress,
+  type = "secondary",
+  disabled = false,
+}) => {
   return (
     <TouchableOpacity
       style={[
@@ -42,8 +36,10 @@ const ActionButton = ({ title, onPress, type = "secondary" }) => {
         type === "primary"
           ? styles.actionButtonPrimary
           : styles.actionButtonSecondary,
+        disabled && styles.actionButtonDisabled,
       ]}
       onPress={onPress}
+      disabled={disabled}
     >
       <Text
         style={[
@@ -59,51 +55,180 @@ const ActionButton = ({ title, onPress, type = "secondary" }) => {
   );
 };
 
-// Message Bubble Component
-const MessageBubble = ({ message, isReceived, onTranslate, onListen }) => {
+const MessageBubble = ({ message, isReceived, onTranslate, onListen, onUpdateMessage }) => {
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [showTranslationModal, setShowTranslationModal] = useState(false);
+  const [showingOriginal, setShowingOriginal] = useState(true);
+
+  const hasTranslation = message.translation && message.translation.text;
+
+  const handleTranslate = () => {
+    setIsTranslating(true);
+    setShowTranslationModal(true);
+  };
+
+  const handleTranslationComplete = (translationData) => {
+    setIsTranslating(false);
+    setShowTranslationModal(false);
+    setShowingOriginal(false);
+    
+    const updatedMessage = {
+      ...message,
+      translation: {
+        text: translationData.translated,
+        language: translationData.targetLanguage,
+        languageName: translationData.targetLanguageName,
+      }
+    };
+    
+    if (onUpdateMessage) {
+      onUpdateMessage(updatedMessage);
+    }
+    
+    if (onTranslate) {
+      onTranslate(translationData);
+    }
+  };
+
+  const handleTranslationCancel = () => {
+    setIsTranslating(false);
+    setShowTranslationModal(false);
+  };
+
+  const toggleTextView = () => {
+    if (hasTranslation) {
+      setShowingOriginal(!showingOriginal);
+    }
+  };
+
+  const handleListen = async () => {
+    if (isSpeaking) return;
+    
+    setIsSpeaking(true);
+    
+    try {
+      let textToSpeak, languageCode;
+      
+      if (hasTranslation && !showingOriginal) {
+        textToSpeak = message.translation.text;
+        languageCode = message.translation.language;
+      } else {
+        textToSpeak = message.text;
+        languageCode = "en";
+      }
+      
+      console.log("Speaking:", textToSpeak, "in language:", languageCode);
+      
+      await speakText(textToSpeak, { 
+        language: languageCode, 
+        rate: 0.8 
+      });
+      
+      if (onListen) {
+        await onListen({
+          ...message,
+          currentText: textToSpeak,
+          currentLanguage: languageCode
+        });
+      }
+    } catch (error) {
+      console.error("Error speaking text:", error);
+    } finally {
+      setTimeout(() => {
+        setIsSpeaking(false);
+      }, 3000);
+    }
+  };
+
+  const displayText = hasTranslation && !showingOriginal 
+    ? message.translation.text 
+    : message.text;
+
+  const getToggleButtonText = () => {
+    if (isTranslating) return "Translating...";
+    if (!hasTranslation) return "Translate";
+    return showingOriginal ? "Show Translation" : "Show Original";
+  };
+
   return (
-    <View
-      style={[
-        styles.messageBubbleContainer,
-        isReceived
-          ? styles.receivedMessageContainer
-          : styles.sentMessageContainer,
-      ]}
-    >
+    <>
       <View
         style={[
-          styles.messageBubble,
-          isReceived ? styles.receivedMessage : styles.sentMessage,
+          styles.messageBubbleContainer,
+          isReceived
+            ? styles.receivedMessageContainer
+            : styles.sentMessageContainer,
         ]}
       >
-        <Text
+        <View
           style={[
-            styles.messageText,
-            isReceived ? styles.receivedMessageText : styles.sentMessageText,
+            styles.messageBubble,
+            isReceived ? styles.receivedMessage : styles.sentMessage,
           ]}
         >
-          {message.text}
-        </Text>
+          {/* Language Indicator */}
+          {hasTranslation && (
+            <View style={styles.languageIndicator}>
+              <Text style={styles.languageIndicatorText}>
+                {showingOriginal ? "English" : message.translation.languageName}
+              </Text>
+            </View>
+          )}
 
-        <View style={styles.actionButtonsContainer}>
-          <ActionButton
-            title="Translate"
-            onPress={() => onTranslate(message)}
-            type="secondary"
-          />
-          <ActionButton
-            title="Listen"
-            onPress={() => onListen(message)}
-            type="secondary"
-          />
+          {/* Message Text */}
+          <Text
+            style={[
+              styles.messageText,
+              isReceived ? styles.receivedMessageText : styles.sentMessageText,
+              !showingOriginal && styles.translatedText,
+            ]}
+          >
+            {displayText}
+          </Text>
+
+          {/* Action Buttons */}
+          <View style={styles.actionButtonsContainer}>
+            <ActionButton
+              title={getToggleButtonText()}
+              onPress={hasTranslation ? toggleTextView : handleTranslate}
+              type="secondary"
+              disabled={isTranslating || isSpeaking}
+            />
+            <ActionButton
+              title={isSpeaking ? "🔊 Playing" : "🔊 Listen"}
+              onPress={handleListen}
+              type="secondary"
+              disabled={isTranslating || isSpeaking}
+            />
+          </View>
         </View>
       </View>
-    </View>
+
+      <TranslationModal
+        visible={showTranslationModal}
+        onClose={handleTranslationCancel}
+        message={message}
+        onTranslationComplete={handleTranslationComplete}
+      />
+    </>
   );
 };
 
-// Message Input Component
 const MessageInput = ({ value, onChangeText, onSend }) => {
+  const handleSend = () => {
+    if (value && value.trim()) {
+      onSend();
+    }
+  };
+
+  const handleKeyPress = (event) => {
+    if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) {
+      event.preventDefault();
+      handleSend();
+    }
+  };
+
   return (
     <View style={styles.inputContainer}>
       <TextInput
@@ -113,96 +238,129 @@ const MessageInput = ({ value, onChangeText, onSend }) => {
         value={value}
         onChangeText={onChangeText}
         multiline
+        returnKeyType="send"
+        onSubmitEditing={handleSend}
+        onKeyPress={handleKeyPress}
+        blurOnSubmit={false}
       />
-      <TouchableOpacity style={styles.sendButton} onPress={onSend}>
+      <TouchableOpacity 
+        style={[
+          styles.sendButton,
+          (!value || !value.trim()) && styles.sendButtonDisabled
+        ]} 
+        onPress={handleSend}
+        disabled={!value || !value.trim()}
+      >
         <Text style={styles.sendButtonText}>↑</Text>
       </TouchableOpacity>
     </View>
   );
 };
 
-// Messages List Component
-const MessagesList = ({ messages, onTranslate, onListen }) => {
+const MessagesList = ({ messages, onTranslate, onListen, onUpdateMessage }) => {
+  const scrollViewRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollToEnd({ animated: true });
+    }
+  }, [messages.length]);
+
   return (
     <ScrollView
+      ref={scrollViewRef}
       style={styles.messagesContainer}
       contentContainerStyle={styles.messagesContent}
       showsVerticalScrollIndicator={false}
     >
       {messages.map((message, index) => (
         <MessageBubble
-          key={index}
+          key={message.id || index}
           message={message}
           isReceived={message.isReceived}
           onTranslate={onTranslate}
           onListen={onListen}
+          onUpdateMessage={onUpdateMessage}
         />
       ))}
     </ScrollView>
   );
 };
 
-// Main Chat Screen Component
 const ChatScreen = () => {
-  const navigation = useNavigation();
+  const [translationHistory, setTranslationHistory] = useState([]);
   const [inputText, setInputText] = useState("");
   const [messages, setMessages] = useState([
-    { text: "message 1", isReceived: false, id: 1 },
-    { text: "message 2", isReceived: false, id: 2 },
-    { text: "message 3", isReceived: false, id: 2 },
-    { text: "message 4", isReceived: false, id: 2 },
-    { text: "message 5", isReceived: false, id: 2 },
-    { text: "message 6", isReceived: true, id: 3 },
-    { text: "message 7", isReceived: false, id: 2 },
-    { text: "message 8", isReceived: true, id: 3 },
-    { text: "message 9", isReceived: true, id: 3 },
-    { text: "message 10", isReceived: false, id: 2 },
-    { text: "message 11", isReceived: true, id: 3 },
-    { text: "message 12", isReceived: false, id: 2 },
-    { text: "message 13", isReceived: true, id: 3 },
-    { text: "message 14", isReceived: false, id: 2 },
-    { text: "message 15", isReceived: true, id: 3 },
-    { text: "message 16", isReceived: false, id: 2 },
-    { text: "message 17", isReceived: true, id: 4 },
-    { text: "message 18", isReceived: true, id: 4 },
+    { 
+      text: "Hello! How are you today?", 
+      isReceived: false, 
+      id: 1,
+      translation: null
+    },
+    { 
+      text: "I'm doing great, thanks for asking!", 
+      isReceived: true, 
+      id: 2,
+      translation: null
+    },
   ]);
-
-  const handleBackPress = () => {
-    navigation.navigate("Home");
-  };
 
   const handleSendMessage = () => {
     if (inputText.trim()) {
       const newMessage = {
-        text: inputText,
+        text: inputText.trim(),
         isReceived: false,
-        id: messages.length + 1,
+        id: Date.now(),
+        translation: null,
       };
-      setMessages([...messages, newMessage]);
+      setMessages(prevMessages => [...prevMessages, newMessage]);
       setInputText("");
     }
   };
 
-  const handleTranslate = (message) => {
-    console.log("Translate:", message.text);
-    // Implement translation logic
+  const handleUpdateMessage = (updatedMessage) => {
+    setMessages(prevMessages => 
+      prevMessages.map(msg => 
+        msg.id === updatedMessage.id ? updatedMessage : msg
+      )
+    );
   };
 
-  const handleListen = (message) => {
-    console.log("Listen:", message.text);
-    // Implement text-to-speech logic
+  const handleTranslate = (translationData) => {
+    setTranslationHistory(prev => [...prev, {
+      ...translationData,
+      timestamp: new Date().toISOString()
+    }]);
+    
+    console.log("Translation completed:", translationData);
+  };
+
+  const handleListen = async (messageData) => {
+    try {
+      console.log("Listening to:", messageData.currentText, "in", messageData.currentLanguage);
+    } catch (error) {
+      console.error("Error in listen handler:", error);
+    }
+  };
+
+  const headerConfig = {
+    showBackButton: true,
+    showMenuButton: true,
+    centerContent: <ReceiverProfile receiverName="Receiver" />,
+    onBackPress: () => {
+      console.log("Back from chat");
+    },
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <AppLayout headerConfig={headerConfig}>
       <StatusBar backgroundColor="#8BB6E8" barStyle="light-content" />
-
-      <ChatHeader onBackPress={handleBackPress} receiverName="Receiver" />
 
       <MessagesList
         messages={messages}
         onTranslate={handleTranslate}
         onListen={handleListen}
+        onUpdateMessage={handleUpdateMessage}
       />
 
       <MessageInput
@@ -210,44 +368,13 @@ const ChatScreen = () => {
         onChangeText={setInputText}
         onSend={handleSendMessage}
       />
-    </SafeAreaView>
+    </AppLayout>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#A8C5E8",
-  },
-
-  // Header Styles
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    backgroundColor: "#8BB6E8",
-    borderRadius: 25,
-    marginHorizontal: 10,
-    marginTop: 10,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#7BA4D9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  backButtonText: {
-    fontSize: 20,
-    color: "white",
-    fontWeight: "bold",
-  },
   profileSection: {
     alignItems: "center",
-    flex: 1,
   },
   profileImage: {
     width: 40,
@@ -269,19 +396,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
-  menuButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#7BA4D9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  menuButtonText: {
-    fontSize: 18,
-    color: "white",
-    fontWeight: "bold",
-  },
 
   messagesContainer: {
     flex: 1,
@@ -289,7 +403,9 @@ const styles = StyleSheet.create({
   },
   messagesContent: {
     paddingVertical: 20,
+    flexGrow: 1,
   },
+
   messageBubbleContainer: {
     marginVertical: 5,
   },
@@ -300,9 +416,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   messageBubble: {
-    maxWidth: "80%",
+    maxWidth: "85%",
     borderRadius: 20,
     padding: 15,
+    minWidth: 120,
   },
   receivedMessage: {
     backgroundColor: "#4A73A8",
@@ -310,9 +427,28 @@ const styles = StyleSheet.create({
   sentMessage: {
     backgroundColor: "#6B94CA",
   },
+
+  languageIndicator: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  languageIndicatorText: {
+    fontSize: 10,
+    color: "rgba(255, 255, 255, 0.9)",
+    fontWeight: "600",
+  },
+
   messageText: {
     fontSize: 16,
-    marginBottom: 10,
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  translatedText: {
+    fontStyle: "italic",
   },
   receivedMessageText: {
     color: "white",
@@ -321,26 +457,31 @@ const styles = StyleSheet.create({
     color: "white",
   },
 
-  // Action Buttons Styles
   actionButtonsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
+    gap: 8,
   },
   actionButton: {
+    flex: 1,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 15,
-    marginHorizontal: 3,
+    alignItems: "center",
   },
   actionButtonPrimary: {
     backgroundColor: "#2E5C99",
   },
   actionButtonSecondary: {
-    backgroundColor: "#5A84BB",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+  },
+  actionButtonDisabled: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
   },
   actionButtonText: {
     fontSize: 12,
-    fontWeight: "500",
+    fontWeight: "600",
+    textAlign: "center",
   },
   actionButtonTextPrimary: {
     color: "white",
@@ -355,6 +496,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 10,
     backgroundColor: "#A8C5E8",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.2)",
   },
   textInput: {
     flex: 1,
@@ -365,6 +508,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#2E5C99",
     maxHeight: 100,
+    minHeight: 40,
   },
   sendButton: {
     width: 40,
@@ -374,6 +518,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 10,
+  },
+  sendButtonDisabled: {
+    backgroundColor: "#8BB6E8",
   },
   sendButtonText: {
     fontSize: 20,

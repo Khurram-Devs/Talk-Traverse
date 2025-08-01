@@ -1,35 +1,36 @@
-import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ScrollView,
+} from "react-native";
 import { Picker } from "@react-native-picker/picker";
-import * as Speech from "expo-speech";
-import { useState, useEffect } from "react";
-import { useTheme } from "../theme/ThemeContext";
-import lingvaTranslate from "../services/translateText";
-import playLingvaAudio from "../services/playLingvaAudio";
-
-const SUPPORTED_LANGUAGES = {
-  en: "English",
-  es: "Spanish",
-  fr: "French",
-  de: "German",
-  it: "Italian",
-  ur: "Urdu",
-};
+import { speakText, getAvailableVoices } from "../services/speechService";
+import { translateAndSpeak, SUPPORTED_LANGUAGES } from "../services";
 
 const TextToSpeechScreen = () => {
-  useEffect(() => {
-    (async () => {
-      const voices = await Speech.getAvailableVoicesAsync();
-    })();
-  }, []);
-
-  const { theme } = useTheme();
   const [text, setText] = useState("");
   const [targetLang, setTargetLang] = useState("es");
   const [translatedText, setTranslatedText] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    getAvailableVoices().then((voices) => {
+      console.log("Available voices:", voices.length);
+    });
+  }, []);
 
   const handlePreview = () => {
-    if (!text.trim()) return;
-    Speech.speak(text, {
+    if (!text.trim()) {
+      Alert.alert("Error", "Please enter some text to preview");
+      return;
+    }
+
+    speakText(text, {
       language: "en",
       pitch: 1.0,
       rate: 0.9,
@@ -37,118 +38,200 @@ const TextToSpeechScreen = () => {
   };
 
   const handleTranslateAndSpeak = async () => {
-    if (!targetLang) {
-      alert("Please select a language to translate to.");
-      return;
-    }
-
     try {
-      const translated = await lingvaTranslate(text, "en", targetLang);
+      const translated = await translateAndSpeak(text, "en", targetLang);
       setTranslatedText(translated);
-      await playLingvaAudio(targetLang, translated);
     } catch (error) {
-      console.error("Translation failed:", error);
-      Alert.alert("Translation failed", error.message);
+      Alert.alert("Error", error.message);
     }
   };
 
+  const handleClear = () => {
+    setText("");
+    setTranslatedText("");
+  };
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <Text style={[styles.label, { color: theme.text }]}>
-        Enter text to speak:
-      </Text>
-      <TextInput
-        style={[styles.input, { color: theme.text, borderColor: theme.text }]}
-        placeholder="Type something..."
-        placeholderTextColor="#aaa"
-        value={text}
-        onChangeText={setText}
-        multiline
-      />
-
-      <Text style={[styles.label, { color: theme.text }]}>
-        Choose target language:
-      </Text>
-      <View style={styles.pickerContainer}>
-        <Picker
-          selectedValue={targetLang}
-          onValueChange={(itemValue) => setTargetLang(itemValue)}
-          style={{ color: theme.text }}
-          dropdownIconColor={theme.text}
-        >
-          {Object.entries(SUPPORTED_LANGUAGES).map(([code, name]) => (
-            <Picker.Item key={code} label={name} value={code} />
-          ))}
-        </Picker>
-      </View>
-
-      <View style={styles.buttonRow}>
-        <Button
-          title="🔊 Preview"
-          onPress={handlePreview}
-          color={theme.primary}
-        />
-        <Button
-          title="🌐 Translate & Speak"
-          onPress={handleTranslateAndSpeak}
-          color={theme.primary}
-        />
-      </View>
-
-      {translatedText ? (
-        <View style={styles.translationPreview}>
-          <Text style={[styles.label, { color: theme.text }]}>Translated Text:</Text>
+    <ScrollView style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.sectionTitle}>Enter Text</Text>
+        <View style={styles.inputContainer}>
           <TextInput
-            style={[
-              styles.input,
-              styles.previewBox,
-              { color: theme.text, borderColor: theme.text },
-            ]}
-            value={translatedText}
-            editable={false}
+            style={styles.textInput}
+            placeholder="Type something to speak or translate..."
+            placeholderTextColor="#B0C4DE"
+            value={text}
+            onChangeText={setText}
             multiline
+            numberOfLines={4}
+            textAlignVertical="top"
           />
         </View>
-      ) : null}
-    </View>
+
+        <Text style={styles.sectionTitle}>Target Language</Text>
+        <View style={styles.pickerContainer}>
+          <Picker
+            selectedValue={targetLang}
+            onValueChange={(itemValue) => setTargetLang(itemValue)}
+            style={styles.picker}
+            dropdownIconColor="#2E5C99"
+          >
+            {Object.entries(SUPPORTED_LANGUAGES).map(([code, name]) => (
+              <Picker.Item
+                key={code}
+                label={name}
+                value={code}
+                color="#2E5C99"
+              />
+            ))}
+          </Picker>
+        </View>
+
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            style={[styles.button, styles.previewButton]}
+            onPress={handlePreview}
+            disabled={isLoading}
+          >
+            <Text style={styles.buttonText}>🔊 Preview Original</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.translateButton]}
+            onPress={handleTranslateAndSpeak}
+            disabled={isLoading}
+          >
+            <Text style={styles.buttonText}>
+              {isLoading ? "⏳ Translating..." : "🌐 Translate & Speak"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.clearButton]}
+            onPress={handleClear}
+            disabled={isLoading}
+          >
+            <Text style={styles.buttonText}>🗑️ Clear</Text>
+          </TouchableOpacity>
+        </View>
+
+        {translatedText ? (
+          <View style={styles.translationContainer}>
+            <Text style={styles.sectionTitle}>Translated Text</Text>
+            <View style={styles.translationBox}>
+              <Text style={styles.translatedText}>{translatedText}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.infoContainer}>
+          <Text style={styles.infoText}>
+            💡 Tip: Use the preview button to hear the original text, or
+            translate & speak to hear it in the selected language.
+          </Text>
+        </View>
+      </View>
+    </ScrollView>
   );
 };
-
-export default TextToSpeechScreen;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#A8C5E8",
+  },
+  content: {
     padding: 20,
-    justifyContent: "flex-start",
+    paddingBottom: 40,
   },
-  label: {
-    fontSize: 16,
-    marginTop: 15,
-    marginBottom: 8,
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#2E5C99",
+    marginBottom: 10,
+    marginTop: 10,
   },
-  input: {
-    height: 120,
-    borderWidth: 1,
+  inputContainer: {
+    backgroundColor: "#B8D2F0",
+    borderRadius: 15,
+    padding: 5,
+    marginBottom: 20,
+  },
+  textInput: {
+    backgroundColor: "white",
     borderRadius: 10,
-    padding: 10,
-    textAlignVertical: "top",
+    padding: 15,
+    fontSize: 16,
+    color: "#2E5C99",
+    minHeight: 100,
+    maxHeight: 150,
   },
   pickerContainer: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 10,
+    backgroundColor: "#B8D2F0",
+    borderRadius: 15,
+    marginBottom: 20,
     overflow: "hidden",
   },
-  buttonRow: {
-    marginTop: 20,
-    flexDirection: "column",
-    gap: 10,
+  picker: {
+    backgroundColor: "white",
+    color: "#2E5C99",
   },
-  translationPreview: {
-    marginTop: 20,
+  buttonContainer: {
+    gap: 15,
+    marginBottom: 20,
   },
-  previewBox: {
-    backgroundColor: "#f0f0f0",
+  button: {
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  previewButton: {
+    backgroundColor: "#4A73A8",
+  },
+  translateButton: {
+    backgroundColor: "#2E5C99",
+  },
+  clearButton: {
+    backgroundColor: "#6B94CA",
+  },
+  buttonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  translationContainer: {
+    marginBottom: 20,
+  },
+  translationBox: {
+    backgroundColor: "#B8D2F0",
+    borderRadius: 15,
+    padding: 15,
+  },
+  translatedText: {
+    fontSize: 16,
+    color: "#2E5C99",
+    lineHeight: 22,
+  },
+  infoContainer: {
+    backgroundColor: "#B8D2F0",
+    borderRadius: 10,
+    padding: 15,
+  },
+  infoText: {
+    color: "#2E5C99",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
   },
 });
+
+export default TextToSpeechScreen;
