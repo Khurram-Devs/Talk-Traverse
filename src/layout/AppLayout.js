@@ -8,7 +8,7 @@ const AppLayout = ({ children }) => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <Header />
+      {/* <Header /> */}
       <View style={styles.content}>
         {children}
       </View>
@@ -25,6 +25,5 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
   },
 });

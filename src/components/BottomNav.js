@@ -12,6 +12,9 @@ const BottomNav = () => {
       <Pressable onPress={() => navigation.navigate("TextToSpeech")}>
         <Text>🔊 Speak</Text>
       </Pressable>
+      <Pressable onPress={() => navigation.navigate("Chat")}>
+        <Text>Chat</Text>
+      </Pressable>
     </View>
   );
 };
