@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import AppLayout from "../layout/AppLayout";
 import TranslationModal from "../components/TranslationModal";
-import { speakText, translateText } from "../services";
+import { speakText, translateAndSpeak } from "../services";
 
 const ReceiverProfile = ({ receiverName }) => {
   return (
@@ -55,7 +55,13 @@ const ActionButton = ({
   );
 };
 
-const MessageBubble = ({ message, isReceived, onTranslate, onListen, onUpdateMessage }) => {
+const MessageBubble = ({
+  message,
+  isReceived,
+  onTranslate,
+  onListen,
+  onUpdateMessage,
+}) => {
   const [isTranslating, setIsTranslating] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showTranslationModal, setShowTranslationModal] = useState(false);
@@ -72,20 +78,20 @@ const MessageBubble = ({ message, isReceived, onTranslate, onListen, onUpdateMes
     setIsTranslating(false);
     setShowTranslationModal(false);
     setShowingOriginal(false);
-    
+
     const updatedMessage = {
       ...message,
       translation: {
         text: translationData.translated,
         language: translationData.targetLanguage,
         languageName: translationData.targetLanguageName,
-      }
+      },
     };
-    
+
     if (onUpdateMessage) {
       onUpdateMessage(updatedMessage);
     }
-    
+
     if (onTranslate) {
       onTranslate(translationData);
     }
@@ -104,32 +110,38 @@ const MessageBubble = ({ message, isReceived, onTranslate, onListen, onUpdateMes
 
   const handleListen = async () => {
     if (isSpeaking) return;
-    
+
     setIsSpeaking(true);
-    
+
     try {
-      let textToSpeak, languageCode;
-      
+      let textToSpeak = message.text;
+      let languageCode = "en";
+
+      // If there's a translation and we're not showing original
       if (hasTranslation && !showingOriginal) {
         textToSpeak = message.translation.text;
         languageCode = message.translation.language;
+
+        // Use the same approach as TextToSpeechScreen
+        try {
+          await translateAndSpeak(message.text, "en", languageCode);
+        } catch (fallbackError) {
+          console.warn(
+            "translateAndSpeak failed, falling back to speakText:",
+            fallbackError
+          );
+          await speakText(textToSpeak, { language: languageCode, rate: 0.8 });
+        }
       } else {
-        textToSpeak = message.text;
-        languageCode = "en";
+        // Speak original English
+        await speakText(textToSpeak, { language: "en", rate: 0.8 });
       }
-      
-      console.log("Speaking:", textToSpeak, "in language:", languageCode);
-      
-      await speakText(textToSpeak, { 
-        language: languageCode, 
-        rate: 0.8 
-      });
-      
+
       if (onListen) {
         await onListen({
           ...message,
           currentText: textToSpeak,
-          currentLanguage: languageCode
+          currentLanguage: languageCode,
         });
       }
     } catch (error) {
@@ -141,13 +153,14 @@ const MessageBubble = ({ message, isReceived, onTranslate, onListen, onUpdateMes
     }
   };
 
-  const displayText = hasTranslation && !showingOriginal 
-    ? message.translation.text 
-    : message.text;
+  const displayText =
+    hasTranslation && !showingOriginal
+      ? message.translation.text
+      : message.text;
 
   const getToggleButtonText = () => {
     if (isTranslating) return "Translating...";
-    if (!hasTranslation) return "Translate";
+    if (!hasTranslation || showingOriginal) return "Translate";
     return showingOriginal ? "Show Translation" : "Show Original";
   };
 
@@ -191,7 +204,7 @@ const MessageBubble = ({ message, isReceived, onTranslate, onListen, onUpdateMes
           <View style={styles.actionButtonsContainer}>
             <ActionButton
               title={getToggleButtonText()}
-              onPress={hasTranslation ? toggleTextView : handleTranslate}
+              onPress={handleTranslate}
               type="secondary"
               disabled={isTranslating || isSpeaking}
             />
@@ -223,7 +236,7 @@ const MessageInput = ({ value, onChangeText, onSend }) => {
   };
 
   const handleKeyPress = (event) => {
-    if (event.nativeEvent.key === 'Enter' && !event.nativeEvent.shiftKey) {
+    if (event.nativeEvent.key === "Enter" && !event.nativeEvent.shiftKey) {
       event.preventDefault();
       handleSend();
     }
@@ -243,11 +256,11 @@ const MessageInput = ({ value, onChangeText, onSend }) => {
         onKeyPress={handleKeyPress}
         blurOnSubmit={false}
       />
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[
           styles.sendButton,
-          (!value || !value.trim()) && styles.sendButtonDisabled
-        ]} 
+          (!value || !value.trim()) && styles.sendButtonDisabled,
+        ]}
         onPress={handleSend}
         disabled={!value || !value.trim()}
       >
@@ -291,17 +304,17 @@ const ChatScreen = () => {
   const [translationHistory, setTranslationHistory] = useState([]);
   const [inputText, setInputText] = useState("");
   const [messages, setMessages] = useState([
-    { 
-      text: "Hello! How are you today?", 
-      isReceived: false, 
+    {
+      text: "Hello! How are you today?",
+      isReceived: false,
       id: 1,
-      translation: null
+      translation: null,
     },
-    { 
-      text: "I'm doing great, thanks for asking!", 
-      isReceived: true, 
+    {
+      text: "I'm doing great, thanks for asking!",
+      isReceived: true,
       id: 2,
-      translation: null
+      translation: null,
     },
   ]);
 
@@ -313,31 +326,39 @@ const ChatScreen = () => {
         id: Date.now(),
         translation: null,
       };
-      setMessages(prevMessages => [...prevMessages, newMessage]);
+      setMessages((prevMessages) => [...prevMessages, newMessage]);
       setInputText("");
     }
   };
 
   const handleUpdateMessage = (updatedMessage) => {
-    setMessages(prevMessages => 
-      prevMessages.map(msg => 
+    setMessages((prevMessages) =>
+      prevMessages.map((msg) =>
         msg.id === updatedMessage.id ? updatedMessage : msg
       )
     );
   };
 
   const handleTranslate = (translationData) => {
-    setTranslationHistory(prev => [...prev, {
-      ...translationData,
-      timestamp: new Date().toISOString()
-    }]);
-    
+    setTranslationHistory((prev) => [
+      ...prev,
+      {
+        ...translationData,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
     console.log("Translation completed:", translationData);
   };
 
   const handleListen = async (messageData) => {
     try {
-      console.log("Listening to:", messageData.currentText, "in", messageData.currentLanguage);
+      console.log(
+        "Listening to:",
+        messageData.currentText,
+        "in",
+        messageData.currentLanguage
+      );
     } catch (error) {
       console.error("Error in listen handler:", error);
     }
