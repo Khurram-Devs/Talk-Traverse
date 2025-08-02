@@ -7,15 +7,21 @@ const BottomNav = () => {
     <View style={styles.container}>
       <TouchableOpacity
         style={styles.navItem}
-        onPress={() => navigation.navigate("Home")}
+        onPress={() => navigation.navigate("Users")}
       >
-        <Text style={styles.navText}>Home</Text>
+        <Text style={styles.navText}>Users</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.navItem}
         onPress={() => navigation.navigate("TextToSpeech")}
       >
         <Text style={styles.navText}>Speech</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.navItem}
+        onPress={() => navigation.navigate("Signup")}
+      >
+        <Text style={styles.navText}>Sign Up</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.navItem}

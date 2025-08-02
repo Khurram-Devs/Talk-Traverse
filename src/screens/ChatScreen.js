@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { useRoute } from "@react-navigation/native";
+import { auth } from "../../firebase";
 import {
   View,
   Text,
@@ -309,8 +311,11 @@ const ChatScreen = () => {
   const [translationHistory, setTranslationHistory] = useState([]);
   const [inputText, setInputText] = useState("");
   const [messages, setMessages] = useState([]);
-  const senderId = "user1";
-  const receiverId = "user2";
+  const route = useRoute();
+  const receiver = route.params?.receiver;
+
+  const senderId = auth.currentUser?.uid;
+  const receiverId = receiver?.uid;
   const chatId = getChatId(senderId, receiverId);
 
   useEffect(() => {
@@ -372,7 +377,9 @@ const ChatScreen = () => {
   const headerConfig = {
     showBackButton: true,
     showMenuButton: true,
-    centerContent: <ReceiverProfile receiverName="Receiver" />,
+    centerContent: (
+      <ReceiverProfile receiverName={receiver?.name || "Receiver"} />
+    ),
     onBackPress: () => {
       console.log("Back from chat");
     },
