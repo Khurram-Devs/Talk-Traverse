@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,11 @@ import {
   StyleSheet,
   StatusBar,
 } from "react-native";
+import {
+  getChatId,
+  sendMessageToFirestore,
+  subscribeToMessages,
+} from "../services/firestoreService";
 import AppLayout from "../layout/AppLayout";
 import TranslationModal from "../components/TranslationModal";
 import { speakText, translateAndSpeak } from "../services";
@@ -117,12 +122,10 @@ const MessageBubble = ({
       let textToSpeak = message.text;
       let languageCode = "en";
 
-      // If there's a translation and we're not showing original
       if (hasTranslation && !showingOriginal) {
         textToSpeak = message.translation.text;
         languageCode = message.translation.language;
 
-        // Use the same approach as TextToSpeechScreen
         try {
           await translateAndSpeak(message.text, "en", languageCode);
         } catch (fallbackError) {
@@ -133,7 +136,6 @@ const MessageBubble = ({
           await speakText(textToSpeak, { language: languageCode, rate: 0.8 });
         }
       } else {
-        // Speak original English
         await speakText(textToSpeak, { language: "en", rate: 0.8 });
       }
 
@@ -199,6 +201,9 @@ const MessageBubble = ({
           >
             {displayText}
           </Text>
+          <Text style={styles.messageTime}>
+            {new Date(message.timestamp?.seconds * 1000).toLocaleTimeString()}
+          </Text>
 
           {/* Action Buttons */}
           <View style={styles.actionButtonsContainer}>
@@ -209,7 +214,7 @@ const MessageBubble = ({
               disabled={isTranslating || isSpeaking}
             />
             <ActionButton
-              title={isSpeaking ? "🔊 Playing" : "🔊 Listen"}
+              title={isSpeaking ? "Playing" : "Listen"}
               onPress={handleListen}
               type="secondary"
               disabled={isTranslating || isSpeaking}
@@ -303,31 +308,31 @@ const MessagesList = ({ messages, onTranslate, onListen, onUpdateMessage }) => {
 const ChatScreen = () => {
   const [translationHistory, setTranslationHistory] = useState([]);
   const [inputText, setInputText] = useState("");
-  const [messages, setMessages] = useState([
-    {
-      text: "Hello! How are you today?",
-      isReceived: false,
-      id: 1,
-      translation: null,
-    },
-    {
-      text: "I'm doing great, thanks for asking!",
-      isReceived: true,
-      id: 2,
-      translation: null,
-    },
-  ]);
+  const [messages, setMessages] = useState([]);
+  const senderId = "user1";
+  const receiverId = "user2";
+  const chatId = getChatId(senderId, receiverId);
 
-  const handleSendMessage = () => {
-    if (inputText.trim()) {
-      const newMessage = {
-        text: inputText.trim(),
-        isReceived: false,
-        id: Date.now(),
-        translation: null,
-      };
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
+  useEffect(() => {
+    const unsubscribe = subscribeToMessages(chatId, (fetchedMessages) => {
+      const formatted = fetchedMessages.map((msg) => ({
+        ...msg,
+        isReceived: msg.senderId !== senderId,
+      }));
+      setMessages(formatted);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleSendMessage = async () => {
+    if (!inputText.trim()) return;
+
+    try {
+      await sendMessageToFirestore(chatId, inputText.trim(), senderId);
       setInputText("");
+    } catch (error) {
+      console.error("Error sending message:", error);
     }
   };
 
@@ -466,7 +471,12 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 16,
     lineHeight: 22,
-    marginBottom: 12,
+    marginBottom: 5,
+  },
+  messageTime: {
+    fontSize: 10,
+    color: "rgba(255, 255, 255, 0.6)",
+    marginBottom: 10,
   },
   translatedText: {
     fontStyle: "italic",
